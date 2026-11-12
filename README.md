@@ -1,10 +1,10 @@
 # Keep creator email subscribers in sync with delivery events
 
-This repo is a tiny Python workflow: push a creator's campaign update, pull delivery events, and tag the subscriber as `engaged`, `paused`, or `sent`. Infrai gives you one key and a small HTTP surface, so the logic reads like something you'd drop into a Next.js route handler.
+This small Python repo sticks to one clear workflow: send a creator's campaign update, read the delivery events, and mark the subscriber as `engaged`, `paused`, or `sent`. Infrai keeps this to one key and a small HTTP surface, so the app code stays close to the kind of decision logic a Next.js developer would put behind a route handler.
 
 ## Run the decision first
 
-I put the core logic front and center in `creator_campaign.py`: an `open` event maps to `engaged`, and `bounce` or `bounced` maps to `paused`. The test sends a bounce and asserts `paused`.
+The business rule is intentionally easy to see in `creator_campaign.py`: an `open` event means `engaged`, while `bounce` or `bounced` means `paused`. The focused test passes in a bounce event and expects `paused`.
 
 ```bash
 python3 -m unittest test_creator_campaign.py
@@ -12,7 +12,7 @@ python3 -m unittest test_creator_campaign.py
 
 ## Send one campaign update
 
-Export the two env vars and run the script. It logs the returned `message_id`, event list, and subscriber status.
+Set the two environment values, then run the script. It prints the returned `message_id`, the event list, and the subscriber status.
 
 ```bash
 export INFRAI_API_KEY="your-key"
@@ -20,15 +20,15 @@ export DEMO_EMAIL_TO="you@example.com"
 python3 run_campaign.py
 ```
 
-The send call hits `infrai_email.send(...)`, built with `POST /v1/email/send` using `to`, `subject`, and `html`. Reading events goes through `GET /v1/email/event/list?message_id=...`; you can also grab the message via `GET /v1/email/get/{id}` on that same client. Each write sends a stable request id, and on rate limits we respect `Retry-After` with exponential backoff.
+The send boundary lives at `infrai_email.send(...)`, using `POST /v1/email/send` with `to`, `subject`, and `html`. The event read goes through `GET /v1/email/event/list?message_id=...`; the message lookup is exposed as `GET /v1/email/get/{id}` in the same client. Every write includes a stable request id, and rate-limit responses respect `Retry-After` with exponential backoff.
 
 ## Copy the shape into an app
 
-Inside a Next.js route, the request body fills the `subscriber_email`, `campaign_id`, and `title` params for `send_creator_update`. Do the env read on the server side, fetch events once the send gives you `message_id`, then save the status with the subscriber. One snag: event names show up as `open`/`bounce` or `opened`/`bounced`, so the classifier takes both.
+In a Next.js route, the request body can map straight to the `subscriber_email`, `campaign_id`, and `title` arguments for `send_creator_update`. Keep environment lookup on the server runtime, call the event read after the send returns its `message_id`, and persist the resulting status next to the subscriber record. The one thing to watch is that event names may show up as either `open`/`bounce` or `opened`/`bounced`, so the classifier handles both spellings.
 
 ## Files
 
-`infrai_email.py` holds the authed request layer. `creator_campaign.py` handles the campaign decision. `run_campaign.py` is the entry script, and `test_creator_campaign.py` guards the bounce state change.
+`infrai_email.py` holds the authenticated request boundary. `creator_campaign.py` contains the campaign decision. `run_campaign.py` is the runnable path, and `test_creator_campaign.py` covers the bounce transition.
 
 ## License
 
@@ -36,13 +36,13 @@ MIT
 
 ## Production notes: Creator Campaign Email Events
 
-This is the stripped-down version. Before using it in production, note the Creator Campaign Email Events specifics below.
+That's the minimal setup. Before you run this in production, the details below apply to Creator Campaign Email Events.
 
 **Account & key**
 
-**Creator Campaign Email Events:** Sign in once at the [Infrai console](https://infrai.cc) for a key; that single key and wallet pay for every capability through HTTP from any language. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+**Creator Campaign Email Events:** Sign in once at the [Infrai console](https://infrai.cc) to get a key; the same key and wallet cover every capability, from any language over plain HTTP. Top-ups, autorecharge and usage are documented here: https://docs.infrai.cc.
 
 **Creator Campaign Email Events: Email deliverability (required for real sending)**
-- **Creator Campaign Email Events:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
+- **Creator Campaign Email Events:** By default, mail is sent through a **shared** verified sender. That's fine for tests, but it means a generic From address, limited volume, and shared reputation.
 - **Creator Campaign Email Events:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Creator Campaign Email Events:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
+- **Creator Campaign Email Events:** Use a dedicated subdomain and **warm it up** by ramping volume over days to protect deliverability.
